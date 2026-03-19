@@ -1,64 +1,288 @@
-import Image from "next/image";
+"use client";
+
+import { useCallback, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useGame, type Rating } from "@/hooks/useGame";
+import { PATTERNS, type Pattern } from "@/lib/patterns";
+import type { DrumSound } from "@/lib/drums";
+
+const RATING_COLORS: Record<Rating, string> = {
+  perfect: "text-cyan-400",
+  good: "text-green-400",
+  ok: "text-yellow-400",
+  miss: "text-red-400",
+};
+
+const RATING_LABELS: Record<Rating, string> = {
+  perfect: "PERFECT",
+  good: "GOOD",
+  ok: "OK",
+  miss: "MISS",
+};
+
+const KEY_MAP: Record<string, DrumSound> = {
+  d: "kick",
+  f: "snare",
+  j: "hihat",
+  D: "kick",
+  F: "snare",
+  J: "hihat",
+};
+
+const DIFFICULTY_STARS = (d: number) => "★".repeat(d) + "☆".repeat(5 - d);
+
+function PatternCard({
+  pattern,
+  onSelect,
+}: {
+  pattern: Pattern;
+  onSelect: (p: Pattern) => void;
+}) {
+  return (
+    <button
+      onClick={() => onSelect(pattern)}
+      className="flex flex-col gap-1 rounded-xl border border-zinc-800 bg-zinc-900/50 px-5 py-4 text-left transition-all hover:scale-[1.02] hover:border-zinc-600 hover:bg-zinc-800/50 active:scale-[0.98]"
+    >
+      <span className="text-sm font-semibold text-white">{pattern.name}</span>
+      <div className="flex items-center gap-3 text-xs text-zinc-500">
+        <span>{pattern.bpm} BPM</span>
+        <span>{pattern.hits.length} Hits</span>
+        <span className="text-amber-400/70">{DIFFICULTY_STARS(pattern.difficulty)}</span>
+      </div>
+    </button>
+  );
+}
+
+function DrumPad({
+  label,
+  keyHint,
+  sound,
+  onTap,
+  disabled,
+}: {
+  label: string;
+  keyHint: string;
+  sound: DrumSound;
+  onTap: (s: DrumSound) => void;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      onPointerDown={() => !disabled && onTap(sound)}
+      disabled={disabled}
+      className={`flex flex-col items-center justify-center gap-1 rounded-2xl border-2 transition-all active:scale-90 ${
+        disabled
+          ? "border-zinc-800 bg-zinc-900 text-zinc-700"
+          : "border-zinc-600 bg-zinc-800 text-white hover:border-cyan-500 hover:bg-zinc-700 active:border-cyan-400 active:bg-cyan-900/30"
+      }`}
+      style={{ width: 100, height: 100 }}
+    >
+      <span className="text-lg font-bold">{label}</span>
+      <span className="text-[10px] text-zinc-500">{keyHint}</span>
+    </button>
+  );
+}
 
 export default function Home() {
+  const { state, listen, tap, reset } = useGame();
+
+  // Keyboard input
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      const sound = KEY_MAP[e.key];
+      if (sound) {
+        e.preventDefault();
+        tap(sound);
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [tap]);
+
+  const lastResult = state.results[state.results.length - 1];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="flex min-h-screen flex-col items-center bg-black text-white">
+      {/* Header */}
+      <header className="flex w-full items-center justify-between px-6 py-4">
+        <h1 className="text-xl font-bold tracking-tight">Beat Match</h1>
+        {state.phase !== "idle" && (
+          <button
+            onClick={reset}
+            className="text-xs text-zinc-500 hover:text-white"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Zurück
+          </button>
+        )}
+      </header>
+
+      <main className="flex w-full max-w-lg flex-1 flex-col items-center px-6">
+        {/* IDLE: Level Selection */}
+        {state.phase === "idle" && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex w-full flex-col gap-6"
           >
-            Documentation
-          </a>
-        </div>
+            <div className="text-center">
+              <p className="text-sm text-zinc-400">
+                Höre das Pattern, dann klopfe es nach.
+              </p>
+              <p className="mt-1 text-xs text-zinc-600">
+                Tastatur: D=Kick, F=Snare, J=Hi-Hat
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {PATTERNS.map((p) => (
+                <PatternCard key={p.id} pattern={p} onSelect={listen} />
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* LISTEN: Playing the pattern */}
+        {state.phase === "listen" && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-1 flex-col items-center justify-center gap-4"
+          >
+            <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-cyan-500/50">
+              <span className="text-3xl">👂</span>
+            </div>
+            <p className="text-lg font-medium text-cyan-400">Zuhören...</p>
+            <p className="text-sm text-zinc-500">{state.pattern?.name}</p>
+          </motion.div>
+        )}
+
+        {/* COUNTDOWN */}
+        {state.phase === "countdown" && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-1 flex-col items-center justify-center gap-4"
+          >
+            <p className="text-lg text-zinc-400">Jetzt du!</p>
+            <motion.p
+              initial={{ scale: 2, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="text-6xl font-bold text-cyan-400"
+            >
+              GO
+            </motion.p>
+          </motion.div>
+        )}
+
+        {/* PLAY: User tapping */}
+        {state.phase === "play" && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-1 flex-col items-center justify-center gap-8"
+          >
+            {/* Combo + last rating */}
+            <div className="flex flex-col items-center gap-2">
+              <AnimatePresence mode="wait">
+                {lastResult && (
+                  <motion.p
+                    key={state.results.length}
+                    initial={{ opacity: 0, y: -10, scale: 1.5 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    className={`text-2xl font-black ${RATING_COLORS[lastResult.rating]}`}
+                  >
+                    {RATING_LABELS[lastResult.rating]}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+              {state.combo > 1 && (
+                <p className="text-sm text-zinc-500">
+                  Combo: <span className="font-bold text-white">{state.combo}x</span>
+                </p>
+              )}
+            </div>
+
+            {/* Drum Pads */}
+            <div className="flex gap-4">
+              <DrumPad label="Kick" keyHint="D" sound="kick" onTap={tap} disabled={false} />
+              <DrumPad label="Snare" keyHint="F" sound="snare" onTap={tap} disabled={false} />
+              <DrumPad label="Hi-Hat" keyHint="J" sound="hihat" onTap={tap} disabled={false} />
+            </div>
+
+            <p className="text-xs text-zinc-600">
+              {state.pattern?.name} — {state.pattern?.bpm} BPM
+            </p>
+          </motion.div>
+        )}
+
+        {/* RESULTS */}
+        {state.phase === "results" && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-1 flex-col items-center justify-center gap-6"
+          >
+            <p className="text-sm text-zinc-400">{state.pattern?.name}</p>
+
+            <div className="text-center">
+              <p className="text-6xl font-black tabular-nums text-white">
+                {state.score}%
+              </p>
+              <p className="mt-1 text-sm text-zinc-500">
+                Genauigkeit
+              </p>
+            </div>
+
+            {/* Stats */}
+            <div className="flex gap-6 text-center">
+              <div>
+                <p className="text-lg font-bold text-cyan-400">
+                  {state.results.filter((r) => r.rating === "perfect").length}
+                </p>
+                <p className="text-[10px] uppercase text-zinc-600">Perfect</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-green-400">
+                  {state.results.filter((r) => r.rating === "good").length}
+                </p>
+                <p className="text-[10px] uppercase text-zinc-600">Good</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-yellow-400">
+                  {state.results.filter((r) => r.rating === "ok").length}
+                </p>
+                <p className="text-[10px] uppercase text-zinc-600">OK</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-red-400">
+                  {state.results.filter((r) => r.rating === "miss").length}
+                </p>
+                <p className="text-[10px] uppercase text-zinc-600">Miss</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-zinc-500">
+              Max Combo: <span className="font-bold text-white">{state.maxCombo}x</span>
+            </p>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => state.pattern && listen(state.pattern)}
+                className="rounded-full bg-white px-6 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-zinc-200"
+              >
+                Nochmal
+              </button>
+              <button
+                onClick={reset}
+                className="rounded-full border border-zinc-700 px-6 py-2.5 text-sm text-zinc-400 transition-colors hover:border-zinc-500 hover:text-white"
+              >
+                Andere Level
+              </button>
+            </div>
+          </motion.div>
+        )}
       </main>
     </div>
   );
