@@ -4,7 +4,7 @@ import { useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useGame, type Rating } from "@/hooks/useGame";
 import { PATTERNS, type Pattern } from "@/lib/patterns";
-import type { DrumSound } from "@/lib/drums";
+import { playDrum, ensureAudioContext, type DrumSound } from "@/lib/drums";
 
 const RATING_COLORS: Record<Rating, string> = {
   perfect: "text-cyan-400",
@@ -97,7 +97,12 @@ export default function Home() {
       const sound = KEY_MAP[e.key];
       if (sound) {
         e.preventDefault();
-        tap(sound);
+        if (state.phase === "play") {
+          tap(sound);
+        } else if (state.phase === "ready") {
+          ensureAudioContext();
+          playDrum(sound);
+        }
       }
     }
     window.addEventListener("keydown", handleKey);
@@ -169,13 +174,17 @@ export default function Home() {
             className="flex flex-1 flex-col items-center justify-center gap-6"
           >
             <p className="text-sm text-zinc-400">{state.pattern?.name}</p>
-            <p className="text-base text-zinc-500">
-              D = Kick, F = Snare, J = Hi-Hat
-            </p>
+
+            {/* Try the drums */}
+            <div className="flex gap-4">
+              <DrumPad label="Kick" keyHint="D" sound="kick" onTap={(s) => { ensureAudioContext(); playDrum(s); }} disabled={false} />
+              <DrumPad label="Snare" keyHint="F" sound="snare" onTap={(s) => { ensureAudioContext(); playDrum(s); }} disabled={false} />
+              <DrumPad label="Hi-Hat" keyHint="J" sound="hihat" onTap={(s) => { ensureAudioContext(); playDrum(s); }} disabled={false} />
+            </div>
 
             <button
               onClick={startPlay}
-              className="mt-4 rounded-full bg-cyan-500 px-10 py-4 text-lg font-bold text-black transition-all hover:scale-105 hover:bg-cyan-400 active:scale-95"
+              className="rounded-full bg-cyan-500 px-10 py-4 text-lg font-bold text-black transition-all hover:scale-105 hover:bg-cyan-400 active:scale-95"
             >
               Los geht&apos;s!
             </button>
