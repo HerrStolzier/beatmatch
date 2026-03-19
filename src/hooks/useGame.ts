@@ -10,7 +10,7 @@ const GOOD_WINDOW = 0.12; // ±120ms
 const OK_WINDOW = 0.2; // ±200ms
 
 export type Rating = "perfect" | "good" | "ok" | "miss";
-export type GamePhase = "idle" | "listen" | "countdown" | "play" | "results";
+export type GamePhase = "idle" | "listen" | "ready" | "play" | "results";
 
 export interface HitResult {
   hit: BeatHit;
@@ -84,13 +84,10 @@ export function useGame() {
       setTimeout(() => playDrum(hit.sound), Math.max(0, delay));
     }
 
-    // After pattern finishes, switch to countdown
+    // After pattern finishes, switch to ready (user starts manually)
     const patternDuration = beatToSeconds(pattern.beats, pattern.bpm);
     setTimeout(() => {
-      setState((s) => ({ ...s, phase: "countdown" }));
-
-      // 3-2-1 countdown then start play phase
-      setTimeout(() => startPlay(), 1500);
+      setState((s) => ({ ...s, phase: "ready" }));
     }, (patternDuration + 0.3) * 1000);
   }, []);
 
@@ -207,5 +204,5 @@ export function useGame() {
     });
   }, []);
 
-  return { state, listen, tap, reset };
+  return { state, listen, startPlay, tap, reset };
 }

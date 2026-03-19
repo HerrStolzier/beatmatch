@@ -84,11 +84,16 @@ function DrumPad({
 }
 
 export default function Home() {
-  const { state, listen, tap, reset } = useGame();
+  const { state, listen, startPlay, tap, reset } = useGame();
 
   // Keyboard input
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
+      if (e.key === " " && state.phase === "ready") {
+        e.preventDefault();
+        startPlay();
+        return;
+      }
       const sound = KEY_MAP[e.key];
       if (sound) {
         e.preventDefault();
@@ -97,7 +102,7 @@ export default function Home() {
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [tap]);
+  }, [tap, startPlay, state.phase]);
 
   const lastResult = state.results[state.results.length - 1];
 
@@ -156,21 +161,25 @@ export default function Home() {
           </motion.div>
         )}
 
-        {/* COUNTDOWN */}
-        {state.phase === "countdown" && (
+        {/* READY: User starts manually */}
+        {state.phase === "ready" && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="flex flex-1 flex-col items-center justify-center gap-4"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-1 flex-col items-center justify-center gap-6"
           >
-            <p className="text-lg text-zinc-400">Jetzt du!</p>
-            <motion.p
-              initial={{ scale: 2, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="text-6xl font-bold text-cyan-400"
+            <p className="text-sm text-zinc-400">{state.pattern?.name}</p>
+            <p className="text-base text-zinc-500">
+              D = Kick, F = Snare, J = Hi-Hat
+            </p>
+
+            <button
+              onClick={startPlay}
+              className="mt-4 rounded-full bg-cyan-500 px-10 py-4 text-lg font-bold text-black transition-all hover:scale-105 hover:bg-cyan-400 active:scale-95"
             >
-              GO
-            </motion.p>
+              Los geht&apos;s!
+            </button>
+            <p className="text-xs text-zinc-600">oder Leertaste drücken</p>
           </motion.div>
         )}
 
