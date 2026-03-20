@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useGame, type Rating } from "@/hooks/useGame";
 import { PATTERNS, type Pattern } from "@/lib/patterns";
@@ -11,6 +11,13 @@ const RATING_COLORS: Record<Rating, string> = {
   good: "text-green-400",
   ok: "text-yellow-400",
   miss: "text-red-400",
+};
+
+const RATING_BG_COLORS: Record<Rating, string> = {
+  perfect: "bg-cyan-400/30 border-cyan-400",
+  good: "bg-green-400/30 border-green-400",
+  ok: "bg-yellow-400/30 border-yellow-400",
+  miss: "bg-red-400/30 border-red-400",
 };
 
 const RATING_LABELS: Record<Rating, string> = {
@@ -59,23 +66,27 @@ function DrumPad({
   sound,
   onTap,
   disabled,
+  flashRating,
 }: {
   label: string;
   keyHint: string;
   sound: DrumSound;
   onTap: (s: DrumSound) => void;
   disabled: boolean;
+  flashRating?: Rating | null;
 }) {
   return (
     <button
       onPointerDown={() => !disabled && onTap(sound)}
       disabled={disabled}
-      className={`flex flex-col items-center justify-center gap-1 rounded-2xl border-2 transition-all active:scale-90 ${
+      style={{ width: 100, height: 100, transition: "background-color 200ms, border-color 200ms" }}
+      className={`flex flex-col items-center justify-center gap-1 rounded-2xl border-2 active:scale-90 ${
         disabled
           ? "border-zinc-800 bg-zinc-900 text-zinc-700"
+          : flashRating
+          ? `${RATING_BG_COLORS[flashRating]} text-white`
           : "border-zinc-600 bg-zinc-800 text-white hover:border-cyan-500 hover:bg-zinc-700 active:border-cyan-400 active:bg-cyan-900/30"
       }`}
-      style={{ width: 100, height: 100 }}
     >
       <span className="text-lg font-bold">{label}</span>
       <span className="text-[10px] text-zinc-500">{keyHint}</span>
@@ -85,6 +96,94 @@ function DrumPad({
 
 export default function Home() {
   const { state, listen, startPlay, tap, reset } = useGame();
+
+  // Flash state: tracks the latest rating per drum sound during play
+  const [flashRatings, setFlashRatings] = useState<Record<DrumSound, Rating | null>>({
+    kick: null,
+    snare: null,
+    hihat: null,
+  });
+  const flashTimers = useRef<Record<DrumSound, ReturnType<typeof setTimeout> | null>>({
+    kick: null,
+    snare: null,
+    hihat: null,
+  });
+
+  // Score count-up animation for results
+  const [displayScore, setDisplayScore] = useState(0);
+
+  // Wrap tap to also trigger flash
+  const handleTap = useCallback(
+    (sound: DrumSound) => {
+      tap(sound);
+      // We'll read the new rating from state.results after tap updates state
+      // Use a short delay to let state update propagate
+      setTimeout(() => {
+        setFlashRatings((prev) => {
+          // read latest result from state ref — we schedule a flash clear below
+          return prev; // will be updated in the useEffect below
+        });
+      }, 0);
+    },
+    [tap],
+  );
+
+  // Watch state.results to detect new hits and flash the right pad
+  const prevResultsLength = useRef(0);
+  useEffect(() => {
+    const newLength = state.results.length;
+    if (newLength > prevResultsLength.current) {
+      const latest = state.results[newLength - 1];
+      if (latest) {
+        const sound = latest.hit.sound;
+        const rating = latest.rating;
+
+        // Clear existing timer for this pad
+        if (flashTimers.current[sound]) {
+          clearTimeout(flashTimers.current[sound]!);
+        }
+
+        setFlashRatings((prev) => ({ ...prev, [sound]: rating }));
+
+        flashTimers.current[sound] = setTimeout(() => {
+          setFlashRatings((prev) => ({ ...prev, [sound]: null }));
+          flashTimers.current[sound] = null;
+        }, 200);
+      }
+    }
+    prevResultsLength.current = newLength;
+  }, [state.results]);
+
+  // Reset flash state when phase changes away from play
+  useEffect(() => {
+    if (state.phase !== "play") {
+      setFlashRatings({ kick: null, snare: null, hihat: null });
+      prevResultsLength.current = 0;
+    }
+  }, [state.phase]);
+
+  // Score count-up animation on results screen
+  useEffect(() => {
+    if (state.phase !== "results") return;
+
+    const target = state.score;
+    const duration = 1000; // ms
+    const startTime = performance.now();
+
+    let rafId: number;
+    function tick(now: number) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      setDisplayScore(Math.round(progress * target));
+      if (progress < 1) {
+        rafId = requestAnimationFrame(tick);
+      }
+    }
+
+    setDisplayScore(0);
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [state.phase, state.score]);
 
   // Keyboard input
   useEffect(() => {
@@ -98,7 +197,7 @@ export default function Home() {
       if (sound) {
         e.preventDefault();
         if (state.phase === "play") {
-          tap(sound);
+          handleTap(sound);
         } else if (state.phase === "ready") {
           ensureAudioContext();
           playDrum(sound);
@@ -107,7 +206,7 @@ export default function Home() {
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [tap, startPlay, state.phase]);
+  }, [handleTap, startPlay, state.phase]);
 
   const lastResult = state.results[state.results.length - 1];
 
@@ -182,6 +281,14 @@ export default function Home() {
               <DrumPad label="Hi-Hat" keyHint="J" sound="hihat" onTap={(s) => { ensureAudioContext(); playDrum(s); }} disabled={false} />
             </div>
 
+            {/* Replay pattern button */}
+            <button
+              onClick={() => state.pattern && listen(state.pattern)}
+              className="rounded-full border border-zinc-700 px-6 py-2 text-sm text-zinc-400 transition-colors hover:border-zinc-500 hover:text-white"
+            >
+              Nochmal hören
+            </button>
+
             <button
               onClick={startPlay}
               className="rounded-full bg-cyan-500 px-10 py-4 text-lg font-bold text-black transition-all hover:scale-105 hover:bg-cyan-400 active:scale-95"
@@ -223,10 +330,18 @@ export default function Home() {
 
             {/* Drum Pads */}
             <div className="flex gap-4">
-              <DrumPad label="Kick" keyHint="D" sound="kick" onTap={tap} disabled={false} />
-              <DrumPad label="Snare" keyHint="F" sound="snare" onTap={tap} disabled={false} />
-              <DrumPad label="Hi-Hat" keyHint="J" sound="hihat" onTap={tap} disabled={false} />
+              <DrumPad label="Kick" keyHint="D" sound="kick" onTap={handleTap} disabled={false} flashRating={flashRatings.kick} />
+              <DrumPad label="Snare" keyHint="F" sound="snare" onTap={handleTap} disabled={false} flashRating={flashRatings.snare} />
+              <DrumPad label="Hi-Hat" keyHint="J" sound="hihat" onTap={handleTap} disabled={false} flashRating={flashRatings.hihat} />
             </div>
+
+            {/* Progress indicator */}
+            <p className="text-sm text-zinc-400">
+              Hit{" "}
+              <span className="font-bold text-white">{state.results.length}</span>
+              /
+              <span className="font-bold text-white">{state.pattern?.hits.length ?? 0}</span>
+            </p>
 
             <p className="text-xs text-zinc-600">
               {state.pattern?.name} — {state.pattern?.bpm} BPM
@@ -245,7 +360,7 @@ export default function Home() {
 
             <div className="text-center">
               <p className="text-6xl font-black tabular-nums text-white">
-                {state.score}%
+                {displayScore}%
               </p>
               <p className="mt-1 text-sm text-zinc-500">
                 Genauigkeit
