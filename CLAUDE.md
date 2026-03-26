@@ -37,4 +37,6 @@ Rhythm game — hear a beat, tap it back. Test your timing with synthesized drum
 - **Next.js 16 Breaking Changes:** APIs und Conventions haben sich geändert — bei Unklarheit `node_modules/next/dist/docs/` lesen (siehe AGENTS.md)
 - **AudioContext Resume:** iOS/Safari blockieren Audio ohne User-Geste — `ensureAudioContext()` wird bei jedem Button-Click und Keypress aufgerufen
 - **Keyboard Events:** `e.preventDefault()` auf D/F/J (sonst Browser-Defaults) und Space (sonst Page Scroll)
-- **Keine Tests konfiguriert** — nur Linting via ESLint
+- **Tests:** Vitest — `pnpm test`. Scoring-Logik in `src/lib/scoring.ts` extrahiert und mit 20 Tests abgedeckt.
+- **CI:** GitHub Actions — lint + tsc + test + build
+- **Pre-commit:** Husky — `pnpm lint`

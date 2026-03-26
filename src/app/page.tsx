@@ -48,7 +48,7 @@ function PatternCard({
   return (
     <button
       onClick={() => onSelect(pattern)}
-      className="flex flex-col gap-1 rounded-xl border border-zinc-800 bg-zinc-900/50 px-5 py-4 text-left transition-all hover:scale-[1.02] hover:border-zinc-600 hover:bg-zinc-800/50 active:scale-[0.98]"
+      className="flex flex-col gap-1 rounded-xl border border-zinc-800 bg-zinc-900/50 px-5 py-4 text-left transition-all hover:scale-[1.02] hover:border-zinc-600 hover:bg-zinc-800/50 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-400 focus-visible:outline-none"
     >
       <span className="text-sm font-semibold text-white">{pattern.name}</span>
       <div className="flex items-center gap-3 text-xs text-zinc-500">
@@ -79,8 +79,9 @@ function DrumPad({
     <button
       onPointerDown={() => !disabled && onTap(sound)}
       disabled={disabled}
+      aria-label={`${label} (Taste ${keyHint})`}
       style={{ width: 100, height: 100, transition: "background-color 200ms, border-color 200ms" }}
-      className={`flex flex-col items-center justify-center gap-1 rounded-2xl border-2 active:scale-90 ${
+      className={`flex flex-col items-center justify-center gap-1 rounded-2xl border-2 active:scale-90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-400 focus-visible:outline-none ${
         disabled
           ? "border-zinc-800 bg-zinc-900 text-zinc-700"
           : flashRating
@@ -143,12 +144,17 @@ export default function Home() {
           clearTimeout(flashTimers.current[sound]!);
         }
 
-        setFlashRatings((prev) => ({ ...prev, [sound]: rating }));
+        // Wrap in setTimeout to avoid synchronous setState inside effect
+        const showTimer = setTimeout(() => {
+          setFlashRatings((prev) => ({ ...prev, [sound]: rating }));
+        }, 0);
 
         flashTimers.current[sound] = setTimeout(() => {
           setFlashRatings((prev) => ({ ...prev, [sound]: null }));
           flashTimers.current[sound] = null;
         }, 200);
+
+        return () => clearTimeout(showTimer);
       }
     }
     prevResultsLength.current = newLength;
@@ -157,8 +163,11 @@ export default function Home() {
   // Reset flash state when phase changes away from play
   useEffect(() => {
     if (state.phase !== "play") {
-      setFlashRatings({ kick: null, snare: null, hihat: null });
-      prevResultsLength.current = 0;
+      const t = setTimeout(() => {
+        setFlashRatings({ kick: null, snare: null, hihat: null });
+        prevResultsLength.current = 0;
+      }, 0);
+      return () => clearTimeout(t);
     }
   }, [state.phase]);
 
@@ -180,9 +189,13 @@ export default function Home() {
       }
     }
 
-    setDisplayScore(0);
+    // Reset to 0 via timer to avoid synchronous setState inside effect
+    const resetTimer = setTimeout(() => setDisplayScore(0), 0);
     rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
+    return () => {
+      clearTimeout(resetTimer);
+      cancelAnimationFrame(rafId);
+    };
   }, [state.phase, state.score]);
 
   // Keyboard input
@@ -218,7 +231,8 @@ export default function Home() {
         {state.phase !== "idle" && (
           <button
             onClick={reset}
-            className="text-xs text-zinc-500 hover:text-white"
+            aria-label="Zurück zur Levelauswahl"
+            className="text-xs text-zinc-500 hover:text-white focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-400 focus-visible:outline-none rounded"
           >
             Zurück
           </button>
@@ -284,14 +298,14 @@ export default function Home() {
             {/* Replay pattern button */}
             <button
               onClick={() => state.pattern && listen(state.pattern)}
-              className="rounded-full border border-zinc-700 px-6 py-2 text-sm text-zinc-400 transition-colors hover:border-zinc-500 hover:text-white"
+              className="rounded-full border border-zinc-700 px-6 py-2 text-sm text-zinc-400 transition-colors hover:border-zinc-500 hover:text-white focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-400 focus-visible:outline-none"
             >
               Nochmal hören
             </button>
 
             <button
               onClick={startPlay}
-              className="rounded-full bg-cyan-500 px-10 py-4 text-lg font-bold text-black transition-all hover:scale-105 hover:bg-cyan-400 active:scale-95"
+              className="rounded-full bg-cyan-500 px-10 py-4 text-lg font-bold text-black transition-all hover:scale-105 hover:bg-cyan-400 active:scale-95 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-400 focus-visible:outline-none"
             >
               Los geht&apos;s!
             </button>
@@ -403,13 +417,13 @@ export default function Home() {
             <div className="flex gap-3">
               <button
                 onClick={() => state.pattern && listen(state.pattern)}
-                className="rounded-full bg-white px-6 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-zinc-200"
+                className="rounded-full bg-white px-6 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-zinc-200 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-400 focus-visible:outline-none"
               >
                 Nochmal
               </button>
               <button
                 onClick={reset}
-                className="rounded-full border border-zinc-700 px-6 py-2.5 text-sm text-zinc-400 transition-colors hover:border-zinc-500 hover:text-white"
+                className="rounded-full border border-zinc-700 px-6 py-2.5 text-sm text-zinc-400 transition-colors hover:border-zinc-500 hover:text-white focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-400 focus-visible:outline-none"
               >
                 Andere Level
               </button>

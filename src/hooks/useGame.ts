@@ -1,15 +1,11 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { playDrum, ensureAudioContext, getAudioTime } from "@/lib/drums";
 import { beatToSeconds, type Pattern, type BeatHit } from "@/lib/patterns";
+import { rateHit, calculateFinalScore, OK_WINDOW, type Rating } from "@/lib/scoring";
 
-// Timing windows (in seconds)
-const PERFECT_WINDOW = 0.05; // ±50ms
-const GOOD_WINDOW = 0.12; // ±120ms
-const OK_WINDOW = 0.2; // ±200ms
-
-export type Rating = "perfect" | "good" | "ok" | "miss";
+export type { Rating };
 export type GamePhase = "idle" | "listen" | "ready" | "play" | "results";
 
 export interface HitResult {
@@ -25,23 +21,6 @@ export interface GameState {
   score: number;
   combo: number;
   maxCombo: number;
-}
-
-function rateHit(delta: number): Rating {
-  const abs = Math.abs(delta);
-  if (abs <= PERFECT_WINDOW) return "perfect";
-  if (abs <= GOOD_WINDOW) return "good";
-  if (abs <= OK_WINDOW) return "ok";
-  return "miss";
-}
-
-function scoreForRating(rating: Rating): number {
-  switch (rating) {
-    case "perfect": return 100;
-    case "good": return 60;
-    case "ok": return 30;
-    case "miss": return 0;
-  }
 }
 
 export function useGame() {
@@ -60,6 +39,39 @@ export function useGame() {
   const comboRef = useRef(0);
   const maxComboRef = useRef(0);
   const patternRef = useRef<Pattern | null>(null);
+
+  // Use a ref so startPlay can call finishRound without forward-reference issues
+  const finishRoundRef = useRef<() => void>(() => undefined);
+
+  const finishRound = useCallback(() => {
+    const pattern = patternRef.current;
+    if (!pattern) return;
+
+    // Mark remaining unmatched hits as misses
+    for (const hit of unmatchedHitsRef.current) {
+      resultsRef.current.push({ hit, rating: "miss", delta: 0 });
+    }
+    unmatchedHitsRef.current = [];
+
+    // Calculate score using the shared scoring function
+    const score = calculateFinalScore(
+      resultsRef.current.map((r) => r.rating),
+      pattern.hits.length,
+    );
+
+    setState((s) => ({
+      ...s,
+      phase: "results",
+      results: [...resultsRef.current],
+      score,
+      maxCombo: maxComboRef.current,
+    }));
+  }, []);
+
+  // Keep finishRoundRef in sync so startPlay can call it without dependency issues
+  useEffect(() => {
+    finishRoundRef.current = finishRound;
+  }, [finishRound]);
 
   // Play the pattern so the user can listen
   const listen = useCallback((pattern: Pattern) => {
@@ -109,7 +121,7 @@ export function useGame() {
 
     // After pattern duration + grace period, show results
     const duration = beatToSeconds(pattern.beats, pattern.bpm);
-    setTimeout(() => finishRound(), (duration + 0.5) * 1000);
+    setTimeout(() => finishRoundRef.current(), (duration + 0.5) * 1000);
   }, []);
 
   // Handle user input (tap/keypress)
@@ -165,33 +177,6 @@ export function useGame() {
       }));
     }
   }, [state.phase]);
-
-  const finishRound = useCallback(() => {
-    const pattern = patternRef.current;
-    if (!pattern) return;
-
-    // Mark remaining unmatched hits as misses
-    for (const hit of unmatchedHitsRef.current) {
-      resultsRef.current.push({ hit, rating: "miss", delta: 0 });
-    }
-    unmatchedHitsRef.current = [];
-
-    // Calculate score
-    const totalPossible = pattern.hits.length * 100;
-    const earned = resultsRef.current.reduce(
-      (sum, r) => sum + scoreForRating(r.rating),
-      0,
-    );
-    const score = totalPossible > 0 ? Math.round((earned / totalPossible) * 100) : 0;
-
-    setState((s) => ({
-      ...s,
-      phase: "results",
-      results: [...resultsRef.current],
-      score,
-      maxCombo: maxComboRef.current,
-    }));
-  }, []);
 
   const reset = useCallback(() => {
     setState({

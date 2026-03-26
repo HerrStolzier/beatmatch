@@ -1,5 +1,8 @@
 # Beat Match
 
+![CI](https://github.com/HerrStolzier/beatmatch/actions/workflows/ci.yml/badge.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
 **Hear the beat. Tap it back.** A browser-based rhythm game with synthesized drums.
 
 ## How to Play
