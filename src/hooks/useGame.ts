@@ -4,6 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { playDrum, ensureAudioContext, getAudioTime } from "@/lib/drums";
 import { beatToSeconds, type Pattern, type BeatHit } from "@/lib/patterns";
 import { rateHit, calculateFinalScore, OK_WINDOW, type Rating } from "@/lib/scoring";
+import { getCalibrationOffset } from "@/lib/calibration";
+
+// Note on setTimeout usage:
+// - Beat scheduling during "listen" phase uses setTimeout only for playDrum calls
+//   that are already AudioContext-time-aligned (delay = audioContextTime - now).
+//   This is acceptable: the actual sound scheduling happens via WebAudio, setTimeout
+//   just triggers the call slightly ahead of time.
+// - Phase transitions (listen→ready, play→results) use setTimeout for UI-only delays.
+//   These are not timing-critical and do not affect scoring accuracy.
 
 export type { Rating };
 export type GamePhase = "idle" | "listen" | "ready" | "play" | "results";
@@ -158,8 +167,11 @@ export function useGame() {
       const hit = unmatchedHitsRef.current[bestIdx];
       unmatchedHitsRef.current.splice(bestIdx, 1);
 
-      const rating = rateHit(bestDelta);
-      const result: HitResult = { hit, rating, delta: bestDelta * 1000 };
+      // Apply calibration offset: subtract latency compensation (in seconds)
+      const calibrationOffsetSec = getCalibrationOffset() / 1000;
+      const adjustedDelta = bestDelta - calibrationOffsetSec;
+      const rating = rateHit(adjustedDelta);
+      const result: HitResult = { hit, rating, delta: adjustedDelta * 1000 };
       resultsRef.current.push(result);
 
       if (rating !== "miss") {

@@ -5,19 +5,28 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useGame, type Rating } from "@/hooks/useGame";
 import { PATTERNS, type Pattern } from "@/lib/patterns";
 import { playDrum, ensureAudioContext, type DrumSound } from "@/lib/drums";
+import {
+  saveHighscore,
+  getHighscore,
+  getAllHighscores,
+  updateStreak,
+  getStreak,
+  type HighscoreEntry,
+  type StreakData,
+} from "@/lib/highscores";
 
 const RATING_COLORS: Record<Rating, string> = {
-  perfect: "text-cyan-400",
-  good: "text-green-400",
-  ok: "text-yellow-400",
-  miss: "text-red-400",
+  perfect: "text-[var(--color-beat-perfect)]",
+  good: "text-[var(--color-beat-good)]",
+  ok: "text-[var(--color-beat-ok)]",
+  miss: "text-[var(--color-beat-miss)]",
 };
 
 const RATING_BG_COLORS: Record<Rating, string> = {
-  perfect: "bg-cyan-400/30 border-cyan-400",
-  good: "bg-green-400/30 border-green-400",
-  ok: "bg-yellow-400/30 border-yellow-400",
-  miss: "bg-red-400/30 border-red-400",
+  perfect: "bg-[var(--color-beat-perfect)]/20 border-[var(--color-beat-perfect)]",
+  good: "bg-[var(--color-beat-good)]/20 border-[var(--color-beat-good)]",
+  ok: "bg-[var(--color-beat-ok)]/20 border-[var(--color-beat-ok)]",
+  miss: "bg-[var(--color-beat-miss)]/20 border-[var(--color-beat-miss)]",
 };
 
 const RATING_LABELS: Record<Rating, string> = {
@@ -41,16 +50,25 @@ const DIFFICULTY_STARS = (d: number) => "★".repeat(d) + "☆".repeat(5 - d);
 function PatternCard({
   pattern,
   onSelect,
+  highscore,
 }: {
   pattern: Pattern;
   onSelect: (p: Pattern) => void;
+  highscore: HighscoreEntry | null;
 }) {
   return (
     <button
       onClick={() => onSelect(pattern)}
       className="flex flex-col gap-1 rounded-xl border border-zinc-800 bg-zinc-900/50 px-5 py-4 text-left transition-all hover:scale-[1.02] hover:border-zinc-600 hover:bg-zinc-800/50 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-400 focus-visible:outline-none"
     >
-      <span className="text-sm font-semibold text-white">{pattern.name}</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-white">{pattern.name}</span>
+        {highscore && (
+          <span className="text-xs font-bold text-[var(--color-beat-good)] tabular-nums">
+            {highscore.score}%
+          </span>
+        )}
+      </div>
       <div className="flex items-center gap-3 text-xs text-zinc-500">
         <span>{pattern.bpm} BPM</span>
         <span>{pattern.hits.length} Hits</span>
@@ -85,7 +103,7 @@ function DrumPad({
         disabled
           ? "border-zinc-800 bg-zinc-900 text-zinc-700"
           : flashRating
-          ? `${RATING_BG_COLORS[flashRating]} text-white`
+          ? `${RATING_BG_COLORS[flashRating]} text-white ${flashRating === "perfect" ? "pad-flash-perfect" : ""}`
           : "border-zinc-600 bg-zinc-800 text-white hover:border-cyan-500 hover:bg-zinc-700 active:border-cyan-400 active:bg-cyan-900/30"
       }`}
     >
@@ -112,6 +130,21 @@ export default function Home() {
 
   // Score count-up animation for results
   const [displayScore, setDisplayScore] = useState(0);
+
+  // Highscores
+  const [highscores, setHighscores] = useState<Record<string, HighscoreEntry>>({});
+  const [isNewRecord, setIsNewRecord] = useState(false);
+  const [prevHighscore, setPrevHighscore] = useState<HighscoreEntry | null>(null);
+  const [streak, setStreak] = useState<StreakData>({ currentStreak: 0, lastPlayedDate: "", bestStreak: 0 });
+
+  // Load highscores on mount (client-side only)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setHighscores(getAllHighscores());
+      setStreak(getStreak());
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
 
   // Wrap tap to also trigger flash
   const handleTap = useCallback(
@@ -170,6 +203,26 @@ export default function Home() {
       return () => clearTimeout(t);
     }
   }, [state.phase]);
+
+  // Save highscore and update streak when results appear
+  useEffect(() => {
+    if (state.phase !== "results" || !state.pattern) return;
+
+    const patternId = state.pattern.id;
+    const existing = getHighscore(patternId);
+    const newRecord = saveHighscore(patternId, state.score, state.maxCombo);
+    const updatedStreak = updateStreak();
+    const updatedHighscores = getAllHighscores();
+
+    // Wrap in setTimeout to avoid synchronous setState inside effect (same pattern as rest of codebase)
+    const t = setTimeout(() => {
+      setPrevHighscore(existing);
+      setIsNewRecord(newRecord);
+      setStreak(updatedStreak);
+      setHighscores(updatedHighscores);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [state.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Score count-up animation on results screen
   useEffect(() => {
@@ -258,7 +311,7 @@ export default function Home() {
 
             <div className="flex flex-col gap-2">
               {PATTERNS.map((p) => (
-                <PatternCard key={p.id} pattern={p} onSelect={listen} />
+                <PatternCard key={p.id} pattern={p} onSelect={listen} highscore={highscores[p.id] ?? null} />
               ))}
             </div>
           </motion.div>
@@ -337,7 +390,10 @@ export default function Home() {
               </AnimatePresence>
               {state.combo > 1 && (
                 <p className="text-sm text-zinc-500">
-                  Combo: <span className="font-bold text-white">{state.combo}x</span>
+                  Combo:{" "}
+                  <span className={`font-bold text-white ${state.combo >= 5 ? "combo-glow" : ""}`}>
+                    {state.combo}x
+                  </span>
                 </p>
               )}
             </div>
@@ -372,46 +428,90 @@ export default function Home() {
           >
             <p className="text-sm text-zinc-400">{state.pattern?.name}</p>
 
+            {/* New Record Banner */}
+            <AnimatePresence>
+              {isNewRecord && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8, y: -10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-center gap-2 rounded-full bg-[var(--color-beat-good)]/20 border border-[var(--color-beat-good)]/40 px-4 py-1.5"
+                >
+                  <span className="text-xs font-bold text-[var(--color-beat-good)] uppercase tracking-widest">
+                    Neuer Highscore!
+                  </span>
+                  <span className="text-xs">
+                    {["✦", "✧", "✦"].map((s, i) => (
+                      <motion.span
+                        key={i}
+                        animate={{ opacity: [1, 0.3, 1] }}
+                        transition={{ duration: 1, delay: i * 0.2, repeat: Infinity }}
+                        className="inline-block"
+                      >
+                        {s}
+                      </motion.span>
+                    ))}
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <div className="text-center">
-              <p className="text-6xl font-black tabular-nums text-white">
+              <p className="score-reveal text-6xl font-black tabular-nums text-white">
                 {displayScore}%
               </p>
-              <p className="mt-1 text-sm text-zinc-500">
-                Genauigkeit
-              </p>
+              <p className="mt-1 text-sm text-zinc-500">Genauigkeit</p>
+              {/* Previous highscore comparison */}
+              {prevHighscore && !isNewRecord && (
+                <p className="mt-1 text-xs text-zinc-600">
+                  Bestleistung: <span className="text-zinc-400">{prevHighscore.score}%</span>
+                </p>
+              )}
+              {prevHighscore && isNewRecord && prevHighscore.score < state.score && (
+                <p className="mt-1 text-xs text-zinc-600">
+                  Vorher: <span className="text-zinc-400 line-through">{prevHighscore.score}%</span>
+                </p>
+              )}
             </div>
 
-            {/* Stats */}
+            {/* Stats with theme colors */}
             <div className="flex gap-6 text-center">
               <div>
-                <p className="text-lg font-bold text-cyan-400">
+                <p className="text-lg font-bold text-[var(--color-beat-perfect)]">
                   {state.results.filter((r) => r.rating === "perfect").length}
                 </p>
                 <p className="text-[10px] uppercase text-zinc-600">Perfect</p>
               </div>
               <div>
-                <p className="text-lg font-bold text-green-400">
+                <p className="text-lg font-bold text-[var(--color-beat-good)]">
                   {state.results.filter((r) => r.rating === "good").length}
                 </p>
                 <p className="text-[10px] uppercase text-zinc-600">Good</p>
               </div>
               <div>
-                <p className="text-lg font-bold text-yellow-400">
+                <p className="text-lg font-bold text-[var(--color-beat-ok)]">
                   {state.results.filter((r) => r.rating === "ok").length}
                 </p>
                 <p className="text-[10px] uppercase text-zinc-600">OK</p>
               </div>
               <div>
-                <p className="text-lg font-bold text-red-400">
+                <p className="text-lg font-bold text-[var(--color-beat-miss)]">
                   {state.results.filter((r) => r.rating === "miss").length}
                 </p>
                 <p className="text-[10px] uppercase text-zinc-600">Miss</p>
               </div>
             </div>
 
-            <p className="text-sm text-zinc-500">
-              Max Combo: <span className="font-bold text-white">{state.maxCombo}x</span>
-            </p>
+            <div className="flex flex-col items-center gap-1">
+              <p className="text-sm text-zinc-500">
+                Max Combo: <span className="font-bold text-white">{state.maxCombo}x</span>
+              </p>
+              {streak.currentStreak > 1 && (
+                <p className="text-xs text-[var(--color-accent)]">
+                  {streak.currentStreak} Tage in Folge!
+                </p>
+              )}
+            </div>
 
             {/* Actions */}
             <div className="flex gap-3">
